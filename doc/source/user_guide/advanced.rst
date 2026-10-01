@@ -1152,6 +1152,51 @@ the :meth:`~Index.is_unique` attribute.
    weakly_monotonic.is_monotonic_increasing
    weakly_monotonic.is_monotonic_increasing & weakly_monotonic.is_unique
 
+.. _advanced.mixed_numeric_indexes:
+
+Mixing integer and float indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When an ``int64`` index is combined with a ``float64`` index, pandas casts the
+integer values to ``float64`` so that the labels can be compared. As in NumPy,
+the ``float64`` dtype can only represent integers exactly up to ``2**53``, so
+distinct integer labels above ``2**53`` can match a nearby float label.
+
+.. ipython:: python
+
+   integer_index = pd.Index([2**53 + 1])
+   float_index = pd.Index([float(2**53)])
+
+   # the two labels are distinct as Python integers
+   2**53 + 1 == float(2**53)
+
+   # but they compare equal once the integer index is cast to float64
+   integer_index.equals(float_index)
+
+This casting affects label matching across dtypes in operations such as
+:meth:`~Index.get_indexer`, :meth:`~Index.intersection`,
+:meth:`~Index.difference`, :meth:`~Index.union` and :meth:`~DataFrame.reindex`,
+as well as alignment during arithmetic between objects with such indexes. Each
+of these can therefore report a match between the two distinct labels above.
+
+.. ipython:: python
+
+   integer_index.get_indexer(float_index)
+   integer_index.intersection(float_index)
+
+In contrast, :meth:`~Index.get_loc` looks up the given label in the index it
+is called on without casting, so it raises a ``KeyError`` here.
+
+.. ipython:: python
+   :okexcept:
+
+   # 9007199254740992.0 is not in the integer index
+   integer_index.get_loc(float_index[0])
+
+If exact matching is required for integer labels above ``2**53``, avoid mixing
+dtypes, for example by casting the ``float64`` index to ``int64`` before
+combining the two indexes.
+
 .. _advanced.endpoints_are_inclusive:
 
 Endpoints are inclusive
