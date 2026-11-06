@@ -440,16 +440,19 @@ def test_zoneinfo_utc_to_local_pre_first_transition(key):
 
 
 def test_zoneinfo_conversion_outside_range_stdlib():
-    # GH#65733 - verify that datetimes outside the range of Python's standard
-    # library (year > 9999) raises a proper error message
+    # GH#65733 wall-time localize outside stdlib range still raises.
     ts = pd.Timestamp(np.datetime64("10000-01-01T09:00:00", "us"))
 
     msg = "Localizing Timestamps which are outside the range of Python"
     with pytest.raises(NotImplementedError, match=msg):
         ts.tz_localize("Europe/Brussels")
 
-    with pytest.raises(NotImplementedError, match=msg):
-        ts = pd.Timestamp(ts._value, unit="us", tz="Europe/Brussels")
+    # GH#68009 converting a UTC instant outside that range no longer raises.
+    result = pd.Timestamp(ts._value, unit="us", tz="Europe/Brussels")
+    assert result.utcoffset() in (timedelta(hours=1), timedelta(hours=2))
+    assert result.tz_convert("UTC") == ts.tz_localize("UTC")
+    assert "+0" in repr(result)
+    assert "+0" in str(result)
 
 
 def test_normalize_pytz_timezone():

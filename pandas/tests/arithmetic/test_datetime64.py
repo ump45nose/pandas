@@ -1723,6 +1723,25 @@ class TestDatetime64OverflowHandling:
         with pytest.raises(OverflowError, match=msg):
             obj + pd.Timedelta(-1, unit).as_unit(unit)
 
+    def test_dt64arr_add_large_td_non_fixed_tz(self):
+        # GH#68009 far-future result with a non-fixed tz used to raise when
+        # boxing/repr needed a stdlib datetime (year > 9999).
+        naive = pd.array([0, 86400], dtype="M8[s]")
+        aware = pd.array([0, 86400], dtype="M8[s, Europe/Brussels]")
+        td = np.timedelta64(10**13, "s")
+
+        naive_result = naive + td
+        aware_result = aware + td
+
+        tm.assert_numpy_array_equal(naive_result.asi8, aware_result.asi8)
+
+        expected = (
+            "<DatetimeArray>\n"
+            "['318857-05-20 19:46:40+02:00', '318857-05-21 19:46:40+02:00']\n"
+            "Length: 2, dtype: datetime64[s, Europe/Brussels]"
+        )
+        assert str(aware_result) == expected
+
     def test_dt64_series_arith_overflow(self):
         # GH#12534, fixed by GH#19024
         dt = pd.Timestamp("1700-01-31")

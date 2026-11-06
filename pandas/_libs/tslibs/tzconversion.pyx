@@ -33,11 +33,13 @@ from pandas._libs.tslibs.dtypes cimport (
     periods_per_second,
 )
 from pandas._libs.tslibs.nattype cimport NPY_NAT
+from pandas._libs.tslibs.ccalendar cimport is_leapyear
 from pandas._libs.tslibs.np_datetime cimport (
     NPY_DATETIMEUNIT,
     dts_to_iso_string,
     import_pandas_datetime,
     npy_datetimestruct,
+    npy_datetimestruct_to_datetime,
     pandas_datetime_to_datetimestruct,
 )
 
@@ -172,9 +174,22 @@ cdef class Localizer:
             and self.has_tz_rule
             and (self.tdata == NULL or utc_val > self.last_trans)
         ):
-            delta = _tz_localize_using_tzinfo_api(
-                utc_val, self.tz, to_utc=False, creso=self._creso, fold=fold
-            )
+            try:
+                delta = _tz_localize_using_tzinfo_api(
+                    utc_val, self.tz, to_utc=False, creso=self._creso, fold=fold
+                )
+            except NotImplementedError:
+                if not self.use_zoneinfo:
+                    raise
+                # GH#68009 year outside stdlib range: reuse zoneinfo rules for
+                # the same calendar date in a leap-matched in-range year.
+                delta = _tz_localize_using_tzinfo_api(
+                    _clamp_year_for_tzinfo_api(utc_val, self._creso),
+                    self.tz,
+                    to_utc=False,
+                    creso=self._creso,
+                    fold=fold,
+                )
         else:
             pos[0] = bisect_right_i8(self.tdata, utc_val, self.ntrans) - 1
             if fold is not NULL:
@@ -817,6 +832,17 @@ cdef ndarray[int64_t] _get_dst_hours(
             dst_hours[grp] = np.hstack((result_a[a_idx], result_b[b_idx]))
 
     return dst_hours
+
+
+
+cdef int64_t _clamp_year_for_tzinfo_api(
+    int64_t utc_val, NPY_DATETIMEUNIT creso
+) except? -1:
+    """Map utc_val onto a leap-matched year in [1, 9999] for zoneinfo/stdlib."""
+    cdef npy_datetimestruct dts
+    pandas_datetime_to_datetimestruct(utc_val, creso, &dts)
+    dts.year = 2000 if is_leapyear(dts.year) else 2001
+    return npy_datetimestruct_to_datetime(creso, &dts)
 
 
 # ----------------------------------------------------------------------
